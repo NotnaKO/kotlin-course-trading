@@ -165,6 +165,10 @@ fun calculateLinearTrend(points: List<PricePoint>): Pair<Double, Double> {
     val sumXSquare = x.sumOf { it * it }
 
     val denominator = (n * sumXSquare - sumX * sumX)
+    if (denominator == 0.0) {
+        val averagePrice = y.average()
+        return Pair(0.0, averagePrice)
+    }
     val slope = (n * sumXY - sumX * sumY) / denominator
     val intercept = (sumY - slope * sumX) / n
 
