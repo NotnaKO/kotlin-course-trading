@@ -121,7 +121,7 @@ fun main() = runBlocking {
                                 System.err.println("Error from Deribit: ${response.error.message} (Code: ${response.error.code})")
                             }
                         } catch (e: Exception) {
-                            System.err.println("Error parsing WebSocket message: $text \n ${e.message}")
+                            System.err.println("Error parsing WebSocket message: $text\n${e.message}")
                         }
                     }
                 }
