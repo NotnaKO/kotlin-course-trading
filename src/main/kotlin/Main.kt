@@ -28,13 +28,12 @@ val requestId = AtomicInteger(1)
 val priceDataWindow = ArrayDeque<PricePoint>()
 
 class TrendData(
-    val slope: Double,
-    val intercept: Double,
+    val trend: LinearTrend,
     val currentPrice: Double,
 )
 
 fun main() = runBlocking {
-    println("Enter instrument name (e.g., BTC-PERPETUAL, ETH-PERPETUAL) or press Enter for default ($INSTRUMENT_NAME_DEFAULT):")
+    print("Enter instrument name (e.g., BTC-PERPETUAL, ETH-PERPETUAL) or press Enter for default ($INSTRUMENT_NAME_DEFAULT):")
     val instrumentName = readlnOrNull()?.takeIf { it.isNotBlank() } ?: INSTRUMENT_NAME_DEFAULT
     println("Using instrument: $instrumentName")
 
@@ -53,8 +52,8 @@ fun main() = runBlocking {
                 val data = synchronized(priceDataWindow) {
                     if (priceDataWindow.size >= MIN_POINTS_FOR_TREND) {
                         val currentPoints = priceDataWindow.toList()
-                        val (s, i) = calculateLinearTrend(currentPoints)
-                        TrendData(s, i, currentPoints.last().price)
+                        val trend = calculateLinearTrend(currentPoints)
+                        TrendData(trend, currentPoints.last().price)
                     } else {
                         null
                     }
@@ -62,19 +61,19 @@ fun main() = runBlocking {
 
                 if (data != null) {
                     val trendDirection = when {
-                        data.slope > 0.00001 -> "UP"
-                        data.slope < -0.00001 -> "DOWN"
+                        data.trend.slope > 0.00001 -> "UP"
+                        data.trend.slope < -0.00001 -> "DOWN"
                         else -> "FLAT"
                     }
                     val firstTimestamp = synchronized(priceDataWindow) { priceDataWindow.first().timestamp }
                     val relativeTimeNow =
                         (System.currentTimeMillis() - firstTimestamp).toDouble() / 1000.0 // in seconds
-                    val extrapolatedPrice = data.slope * (relativeTimeNow + 1.0) + data.intercept
+                    val extrapolatedPrice = data.trend.slope * (relativeTimeNow + 1.0) + data.trend.intercept
 
                     println(
                         "Inst: $instrumentName | Window: ${SLIDING_WINDOW_SECONDS}s (${priceDataWindow.size} pts) | " +
                                 "Price: ${"%.2f".format(data.currentPrice)} | Trend: $trendDirection (${
-                                    "%.4f".format(data.slope)
+                                    "%.4f".format(data.trend.slope)
                                 } price/sec) | " +
                                 "Extrapolated next (1s): ${"%.2f".format(extrapolatedPrice)}"
                     )
@@ -115,9 +114,9 @@ fun main() = runBlocking {
                                 val pricePoint =
                                     PricePoint(tickerData.timestamp, tickerData.markPrice)
                                 addPricePointToWindow(pricePoint)
-                            } else if (response.id != null && response.result != null) {
+                            } else if (response.result != null) {
                                 println("Subscription confirmed for channels: ${response.result}")
-                            } else if (response.id != null && response.error != null) {
+                            } else if (response.error != null) {
                                 System.err.println("Error from Deribit: ${response.error.message} (Code: ${response.error.code})")
                             }
                         } catch (e: Exception) {
@@ -135,7 +134,6 @@ fun main() = runBlocking {
         }
     }
 
-    joinAll(wsJob, trendJob)
 }
 
 fun addPricePointToWindow(pricePoint: PricePoint) {
@@ -149,9 +147,10 @@ fun addPricePointToWindow(pricePoint: PricePoint) {
     }
 }
 
+class LinearTrend(val slope: Double, val intercept: Double)
 
-fun calculateLinearTrend(points: List<PricePoint>): Pair<Double, Double> {
-    if (points.size < 2) return Pair(0.0, points.firstOrNull()?.price ?: 0.0)
+fun calculateLinearTrend(points: List<PricePoint>): LinearTrend {
+    if (points.size < 2) return LinearTrend(0.0, points.firstOrNull()?.price ?: 0.0)
 
     val n = points.size.toDouble()
     val firstTimestamp = points.first().timestamp
@@ -172,5 +171,5 @@ fun calculateLinearTrend(points: List<PricePoint>): Pair<Double, Double> {
     val slope = (n * sumXY - sumX * sumY) / denominator
     val intercept = (sumY - slope * sumX) / n
 
-    return Pair(slope, intercept)
+    return LinearTrend(slope, intercept)
 }
