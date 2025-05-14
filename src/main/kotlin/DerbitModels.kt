@@ -4,11 +4,11 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class DeribitRequest<T>(
+data class DeribitRequest(
     val jsonrpc: String = "2.0",
     val id: Int,
     val method: String,
-    val params: T
+    val params: SubscribeParams
 )
 
 @Serializable
