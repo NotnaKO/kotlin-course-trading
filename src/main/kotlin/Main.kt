@@ -81,7 +81,7 @@ fun main() = runBlocking {
                     lastOutputTime = currentTime
                 } else {
                     println(
-                        "Instrument: $instrumentName | Window: ${SLIDING_WINDOW_SECONDS}s (${priceDataWindow.size} pts) | (collecting data...)"
+                        "Inst: $instrumentName | Window: ${SLIDING_WINDOW_SECONDS}s (${priceDataWindow.size} pts) | (collecting data...)"
                     )
                     lastOutputTime = currentTime
                 }
