@@ -53,6 +53,10 @@ fun main(): Unit = runBlocking {
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastOutputTime >= TREND_OUTPUT_INTERVAL_MS) {
                 val data = priceDataWindowMutex.withLock {
+                    val windowLimitTimestamp = System.currentTimeMillis() - (SLIDING_WINDOW_SECONDS * 1000)
+                    while (priceDataWindow.isNotEmpty() && priceDataWindow.first().timestamp < windowLimitTimestamp) {
+                        priceDataWindow.removeFirst()
+                    }
                     if (priceDataWindow.size >= MIN_POINTS_FOR_TREND) {
                         val currentPoints = priceDataWindow.toList()
                         val trend = calculateLinearTrend(currentPoints)
@@ -116,7 +120,7 @@ fun main(): Unit = runBlocking {
                                     val tickerData = response.params.data
                                     val pricePoint =
                                         PricePoint(tickerData.timestamp, tickerData.markPrice)
-                                    addPricePointToWindow(pricePoint)
+                                    priceDataWindowMutex.withLock { priceDataWindow.addLast(pricePoint) }
                                 }
 
                                 response.result != null -> println("Subscription confirmed for channels: ${response.result}")
@@ -139,16 +143,6 @@ fun main(): Unit = runBlocking {
 
 }
 
-suspend fun addPricePointToWindow(pricePoint: PricePoint) {
-    priceDataWindowMutex.withLock {
-        priceDataWindow.addLast(pricePoint)
-        // Remove old data points
-        val windowLimitTimestamp = pricePoint.timestamp - (SLIDING_WINDOW_SECONDS * 1000)
-        while (priceDataWindow.isNotEmpty() && priceDataWindow.first().timestamp < windowLimitTimestamp) {
-            priceDataWindow.removeFirst()
-        }
-    }
-}
 
 class LinearTrend(val slope: Double, val intercept: Double)
 
