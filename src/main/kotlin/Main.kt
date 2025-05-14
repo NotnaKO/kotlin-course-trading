@@ -32,7 +32,7 @@ class TrendData(
     val currentPrice: Double,
 )
 
-fun main() = runBlocking {
+fun main(): Unit = runBlocking {
     print("Enter instrument name (e.g., BTC-PERPETUAL, ETH-PERPETUAL) or press Enter for default ($INSTRUMENT_NAME_DEFAULT):")
     val instrumentName = readlnOrNull()?.takeIf { it.isNotBlank() } ?: INSTRUMENT_NAME_DEFAULT
     println("Using instrument: $instrumentName")
@@ -44,7 +44,7 @@ fun main() = runBlocking {
         }
     }
 
-    val trendJob = launch {
+     launch {
         var lastOutputTime = 0L
         while (isActive) {
             val currentTime = System.currentTimeMillis()
@@ -89,7 +89,7 @@ fun main() = runBlocking {
         }
     }
 
-    val wsJob = launch {
+    launch {
         try {
             client.webSocket(DERIBIT_TEST_WS_URL) {
                 println("Connected to Deribit WebSocket.")
@@ -108,16 +108,16 @@ fun main() = runBlocking {
                         val text = frame.readText()
                         try {
                             val response = json.decodeFromString<DeribitResponse<TickerData>>(text)
+                            when {
+                                response.method == "subscription" && response.params?.channel == "ticker.$instrumentName.$TICKER_SUBSCRIPTION_INTERVAL" -> {
+                                    val tickerData = response.params.data
+                                    val pricePoint =
+                                        PricePoint(tickerData.timestamp, tickerData.markPrice)
+                                    addPricePointToWindow(pricePoint)
+                                }
 
-                            if (response.method == "subscription" && response.params?.channel == "ticker.$instrumentName.$TICKER_SUBSCRIPTION_INTERVAL") {
-                                val tickerData = response.params.data
-                                val pricePoint =
-                                    PricePoint(tickerData.timestamp, tickerData.markPrice)
-                                addPricePointToWindow(pricePoint)
-                            } else if (response.result != null) {
-                                println("Subscription confirmed for channels: ${response.result}")
-                            } else if (response.error != null) {
-                                System.err.println("Error from Deribit: ${response.error.message} (Code: ${response.error.code})")
+                                response.result != null -> println("Subscription confirmed for channels: ${response.result}")
+                                response.error != null -> System.err.println("Error from Deribit: ${response.error.message} (Code: ${response.error.code})")
                             }
                         } catch (e: Exception) {
                             System.err.println("Error parsing WebSocket message: $text\n${e.message}")
@@ -166,7 +166,7 @@ fun calculateLinearTrend(points: List<PricePoint>): LinearTrend {
     val denominator = (n * sumXSquare - sumX * sumX)
     if (denominator == 0.0) {
         val averagePrice = y.average()
-        return Pair(0.0, averagePrice)
+        return LinearTrend(0.0, averagePrice)
     }
     val slope = (n * sumXY - sumX * sumY) / denominator
     val intercept = (sumY - slope * sumX) / n
