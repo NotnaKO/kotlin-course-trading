@@ -8,6 +8,8 @@ import io.ktor.serialization.kotlinx.json.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,6 +28,7 @@ const val MIN_POINTS_FOR_TREND = 5
 
 val requestId = AtomicInteger(1)
 val priceDataWindow = ArrayDeque<PricePoint>()
+val priceDataWindowMutex = Mutex()
 
 class TrendData(
     val trend: LinearTrend,
@@ -44,12 +47,12 @@ fun main(): Unit = runBlocking {
         }
     }
 
-     launch {
+    launch {
         var lastOutputTime = 0L
         while (isActive) {
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastOutputTime >= TREND_OUTPUT_INTERVAL_MS) {
-                val data = synchronized(priceDataWindow) {
+                val data = priceDataWindowMutex.withLock {
                     if (priceDataWindow.size >= MIN_POINTS_FOR_TREND) {
                         val currentPoints = priceDataWindow.toList()
                         val trend = calculateLinearTrend(currentPoints)
@@ -65,13 +68,13 @@ fun main(): Unit = runBlocking {
                         data.trend.slope < -0.00001 -> "DOWN"
                         else -> "FLAT"
                     }
-                    val firstTimestamp = synchronized(priceDataWindow) { priceDataWindow.first().timestamp }
+                    val firstTimestamp = priceDataWindowMutex.withLock { priceDataWindow.first().timestamp }
                     val relativeTimeNow =
                         (System.currentTimeMillis() - firstTimestamp).toDouble() / 1000.0 // in seconds
                     val extrapolatedPrice = data.trend.slope * (relativeTimeNow + 1.0) + data.trend.intercept
 
                     println(
-                        "Inst: $instrumentName | Window: ${SLIDING_WINDOW_SECONDS}s (${priceDataWindow.size} pts) | " +
+                        "Inst: $instrumentName | Window: ${SLIDING_WINDOW_SECONDS}s (${priceDataWindowMutex.withLock { priceDataWindow.size }} pts) | " +
                                 "Price: ${"%.2f".format(data.currentPrice)} | Trend: $trendDirection (${
                                     "%.4f".format(data.trend.slope)
                                 } price/sec) | " +
@@ -80,7 +83,7 @@ fun main(): Unit = runBlocking {
                     lastOutputTime = currentTime
                 } else {
                     println(
-                        "Inst: $instrumentName | Window: ${SLIDING_WINDOW_SECONDS}s (${priceDataWindow.size} pts) | (collecting data...)"
+                        "Inst: $instrumentName | Window: ${SLIDING_WINDOW_SECONDS}s (${priceDataWindowMutex.withLock { priceDataWindow.size }} pts) | (collecting data...)"
                     )
                     lastOutputTime = currentTime
                 }
@@ -136,8 +139,8 @@ fun main(): Unit = runBlocking {
 
 }
 
-fun addPricePointToWindow(pricePoint: PricePoint) {
-    synchronized(priceDataWindow) {
+suspend fun addPricePointToWindow(pricePoint: PricePoint) {
+    priceDataWindowMutex.withLock {
         priceDataWindow.addLast(pricePoint)
         // Remove old data points
         val windowLimitTimestamp = pricePoint.timestamp - (SLIDING_WINDOW_SECONDS * 1000)
